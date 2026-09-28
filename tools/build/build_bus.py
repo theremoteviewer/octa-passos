@@ -1029,9 +1029,10 @@ def main():
             sys.exit(f"{_u.label}: past the stock zero run")
         img[_at - BASE:_at - BASE + len(_b)] = _b
         _sym[_u.label] = _syms
+        _ref_note = (" -- matches the author's build at 0x%08x" % _u.reference[0]) if _u.reference else ''
         print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
               f"{' (pinned)' if _u.cave_addr is not None else ''}"
-              f"{' -- matches the author\'s build at 0x%08x' % _u.reference[0] if _u.reference else ''}")
+              f"{_ref_note}")
         if _in:
             _cave_top = max(_cave_top, _at + len(_b))
         elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
