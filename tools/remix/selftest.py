@@ -519,7 +519,9 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (),
+    _want = {"jesse-max": _rig,
+             "arp": (), "stopguard": (), "the-passenger": (), "slotprobe": (), "notescale": (),
+             "restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (),
              "repitch": (),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
