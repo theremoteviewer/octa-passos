@@ -16,7 +16,33 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # effect name (tools/build/build_bus.py). No trailing comment on the line:
 # make keeps the spaces before a `#` and `make image` then splits its recipe.
 BUILD   ?= 79
+# The container's version field is what the running OS and the bootloader
+# DRAW: offset 0x08, ten characters, space padded and right justified
+# (vendor/elektron-firmware-tool/main.c set_version). Ten is the whole
+# budget -- "the passenger OS" does not fit and never will, so the-passenger
+# spends it on a name and a number and puts the full name on the screen
+# itself. Every other remix keeps OCTABAM<n>: the build report is API and
+# scripts/refhash.sh compares it.
+# The version string is QUOTED where it is passed: "PASSOS 1.0" holds a
+# space, and unquoted the tool takes the 1.0 for a second argument.
+#
+# AND IT IS UPPER CASE. The boot screen's font carries no lowercase glyphs:
+# flashed as "PassOS 1.0" the panel drew P, three pieces of junk, then
+# "OS 1.0" -- one blob per lowercase letter. Elektron's own string, OS1.40C,
+# is all caps for the same reason. The file name keeps the mixed case.
+# the-passenger carries its own version, not the build counter: the mod is
+# released as PassOS <n.n> and "PassOS 1.0" is exactly the ten characters the
+# field holds. A space is legal there (the field is space padded anyway), but
+# not in a file name, so TAG is the same string without it and the outputs
+# are named with TAG while the container is stamped with VERSION.
+ifeq ($(REMIX),the-passenger)
+PASSVER ?= 1.0
+VERSION ?= PASSOS $(PASSVER)
+TAG     ?= PassOS$(PASSVER)
+else
 VERSION ?= OCTABAM$(BUILD)
+TAG     ?= $(VERSION)
+endif
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>.py is the selection. bamsep26 is the rig and the default;
@@ -70,16 +96,16 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLAS
 	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD).bin $(EFT) \
 	  -i $(SYX) -c 3 out/mainos_bus.bin \
-	  -V $(VERSION) -o out/OCTATRACK_OS1.40C_$(VERSION).syx
+	  -V '$(VERSION)' -o out/OCTATRACK_OS1.40C_$(TAG).syx
 	@test -f out/elek_$(BUILD).bin || { echo; \
 	  echo "  the .syx was written but no container came out: $(EFT) was built WITHOUT"; \
 	  echo "  tools/patches/elektron-firmware-tool.patch (EFT_EMIT_CONTAINER)."; \
 	  echo "  Fix: rm -rf vendor/elektron-firmware-tool; make setup; make image REMIX=$(REMIX) BUILD=$(BUILD)"; exit 1; }
 	python3 tools/build/make_bin.py out/elek_$(BUILD).bin \
-	  -o out/OCTATRACK_$(VERSION).bin
+	  -o out/OCTATRACK_$(TAG).bin
 	@echo
-	@echo "  card image: out/OCTATRACK_$(VERSION).bin"
-	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION).syx"
+	@echo "  card image: out/OCTATRACK_$(TAG).bin"
+	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(TAG).syx"
 	@echo "  -> docs/remixer/FLASHING.md before you write either to hardware."
 
 # ------------------------------------------------- audition without flashing --
@@ -300,12 +326,12 @@ burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=
 	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD)burn.bin $(EFT) \
 	  -i $(SYX) -c 3 out/mainos_bus.bin \
-	  -V $(VERSION)B -o out/OCTATRACK_OS1.40C_$(VERSION)B.syx
+	  -V '$(VERSION)B' -o out/OCTATRACK_OS1.40C_$(TAG)B.syx
 	python3 tools/build/make_bin.py out/elek_$(BUILD)burn.bin \
-	  -o out/OCTATRACK_$(VERSION)B.bin
+	  -o out/OCTATRACK_$(TAG)B.bin
 	@echo
-	@echo "  card image: out/OCTATRACK_$(VERSION)B.bin   (the rig + BURN on SEND's slot 2)"
-	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION)B.syx"
+	@echo "  card image: out/OCTATRACK_$(TAG)B.bin   (the rig + BURN on SEND's slot 2)"
+	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(TAG)B.syx"
 
 .PHONY: check
 check: bus cycles verify ## Everything that can be checked without hardware (the set gates run under the port when OT_PROJECT or ~/.octabam_project names a project)
