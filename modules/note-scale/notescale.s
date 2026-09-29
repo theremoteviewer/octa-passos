@@ -1222,6 +1222,15 @@ sc_decode:
 sc_lookup:
         | entry: %d0 = the note, %d1 = the index, %a2 -> the note byte.
         | The detour replaces the table load AND the add and store after it.
+        |
+        | Only %d0's low byte is the note: stock loads it with move.b and a
+        | moveaw, so bits 8-31 are whatever the slot loop left there (0xffffff
+        | on every slot after the first, measured under the port). Stock only
+        | stores the byte and never looks; the fold below compares the long,
+        | so an in-range chord slot read as negative went up an octave and
+        | slipped past the already-sounding check as a second note.
+        mvs.b   %d0,%d0
+        bmi.s   .Lsl_store               | -1 is stock's "no note": keep it
         move.l  (LOCAL,%fp),%d2
         subq.l  #1,%d2
         moveq   #12,%d3
