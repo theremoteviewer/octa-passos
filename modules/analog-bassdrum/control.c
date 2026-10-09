@@ -11,7 +11,101 @@
 #define PART_STRIDE 0x18b2u
 #define SIG 60u
 #define DESC_SIZE 0x1cau
-static uint8_t desc[2][DESC_SIZE] = {{0}};
+/* ---- the machine table -------------------------------------------------
+ * One row per entry in the engine browser. `engine` is which DSP voice runs
+ * it; `tables` is the index of its coefficient set within that voice, so
+ * several machines share one engine and differ only in their tables -- which
+ * is how the Machinedrum's own families are built (out/md-machines/NOTES.md
+ * section 11.3: two signal paths cover twenty-one machines).
+ *
+ * Adding a row here adds a browser entry, a page descriptor and a stored
+ * MODEL id. It adds DSP CODE only if `engine` is one that does not exist yet.
+ */
+#define AB_MODELS 11
+/* ⚠️ THE VIEWPORT COUNT IS SHARED BY THE OPEN CALL AND THE DRAW, and the first
+ * ten-entry build proved why it has to be one constant: open told the stock
+ * list controller six rows, draw painted all AB_MODELS from the top of the
+ * window and ignored the scroll entirely. With two models that is invisible;
+ * with ten the list would not move past the sixth entry (Jesse, 3 Oct 2026). */
+#define AB_ROWS 6
+static const struct ab_model {
+    const char *label;
+    const char *names[12];
+    unsigned engine;          /* 0 = the 808 voice, 1 = the 909 voice.
+                                 MUST match dsp808.MACHINE_ENGINE, which is
+                                 what the glue reads to route the voice. */
+    const uint8_t defaults[12];
+} ab_models[AB_MODELS] = {
+    /* ---- the body oscillator: kicks, and anything else pitched ---------
+     * ⚠️ A TOM IS THIS ENGINE TUNED UP, and that is not a cheat: it is why one
+     * voice covers kick and tom on every drum machine ever built. The rows
+     * were pulled on 3 Oct 2026 when the browser was NOTHING but body
+     * variants; with six other mechanisms beside them they read as toms.
+     * Their base frequency is dsp808.MACHINE_BASE_HZ -- one already-allocated
+     * X word each and no P words at all.
+     */
+    {"001 808", {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}, 0,
+     {64, 80, 80, 64, 64, 0, 0, 64, 127, 64, 64, 0}},
+    {"002 909", {"PITCH","DECAY","TUNE","ATK","TDEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}, 1,
+     {64, 80, 80, 64, 64, 0, 1, 64, 127, 64, 64, 0}},
+    /* ---- band-passed noise: the Machinedrum hats -----------------------
+     * The only two engines here with MEASURED targets -- band and -30 dB
+     * point from emulator captures of the real machine. CH came back at
+     * Jesse's request, 5 Oct 2026.
+     */
+    {"003 TRX CH", {"PITCH","DECAY","WIDTH","SWEEP","ATK","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 2, 100, 127, 64, 64, 0}},
+    {"004 TRX OH", {"PITCH","DECAY","WIDTH","SWEEP","ATK","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 3, 100, 127, 64, 64, 0}},
+    /* ---- the other mechanisms ------------------------------------------
+     * ⚠️ EVERY KNOB IS NAMED PER ENGINE because it MEANS something different
+     * per engine: a filter corner on the hat, a dry/wet on the snare, how
+     * much room on the clap, the modulator ratio on the FM. One knob called
+     * WIDTH meaning five things is how a user learns to distrust the labels.
+     *
+     * ⚠️ AND EVERY ROW NAMES SIX, which is Jesse's own ask on 5 Oct 2026 --
+     * "not all of the parameters work. In fact I'd like each of the drums to
+     * have 6 parameters". Six rows named three and left three drawing "--",
+     * and a knob that is named but read by nothing is the worse half of the
+     * same complaint: it draws, it moves, it stores into the Part and it
+     * changes nothing. `tools/harness/bdnoise.py` now renders every named
+     * knob at 20 and at 110 and refuses one whose output does not move;
+     * `tools/verify/verify_drum_rows.py` refuses a row that names fewer
+     * than six.
+     *
+     * ⚠️ KNOBS 3 AND 4 DEFAULT TO 64 AND KNOB 5 TO 0, AND EVERY ENGINE IS
+     * NEUTRAL THERE. A row's defaults apply only to a NEW assignment, so a
+     * track that existed before this build arrives holding exactly these
+     * three bytes -- whatever the engine reads in them has to be the machine
+     * as it was measured, or a build that only ADDED parameters detunes every
+     * stored Part. So knob 3 and knob 4 are centred on the fixed constant
+     * each one replaced, and knob 5 (DRIVE, on every one of these rows) is
+     * unity gain at zero.
+     */
+    {"005 PL HAT", {"PITCH","DECAY","METAL","SPRD","RES","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 4, 100, 127, 64, 64, 0}},   /* six oscillators */
+    {"006 PL SNR", {"PITCH","DECAY","SNAP","RATIO","NDEC","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 5, 100, 127, 64, 64, 0}},   /* bodies + wires */
+    {"007 PL CLP", {"PITCH","DECAY","ROOM","SPRD","REPS","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 6, 100, 127, 64, 64, 0}},   /* a burst train */
+    {"008 PL FM", {"PITCH","DECAY","RATIO","INDEX","IDEC","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 7, 100, 127, 64, 64, 0}},   /* two-operator FM */
+    {"009 PL TOM", {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}, 0,
+     {64, 56, 80, 64, 64, 0, 8, 100, 127, 64, 64, 0}},   /* a body at 180 Hz */
+    {"010 PL CNG", {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}, 0,
+     {64, 40, 80, 64, 64, 0, 9, 100, 127, 64, 64, 0}},   /* a body at 310 Hz */
+    /* ---- four tuned resonators struck by a noise burst -----------------
+     * Jesse, 5 Oct 2026: "Also interested in the rings algo." A modal
+     * resonator bank: the partials' spacing, the strike's brightness and
+     * which partials are emphasised, with the POLE RADIUS as the decay so
+     * four partials ring for four different lengths. Not a port of Mutable
+     * Instruments' Rings and not matched to it -- modules/analog-bassdrum/
+     * bdring.asm says why, and credits it.
+     */
+    {"011 PL RNG", {"PITCH","DECAY","STRUC","BRITE","POS","DRIVE","","ACCNT","--","--","--","---"}, 2,
+     {64, 64, 64, 64, 64, 0, 10, 100, 127, 64, 64, 0}},  /* resonator bank */
+};
+static uint8_t desc[AB_MODELS][DESC_SIZE] = {{0}};
 uint32_t ab_desc_p = 0;
 uint32_t ab_render_calls = 0, ab_hits = 0;
 static unsigned signed_track(const volatile uint8_t *part, unsigned t) {
@@ -54,17 +148,13 @@ void ab_lpf_fmt(char *out,int value) {
 static uint32_t page_for(unsigned model) {
     if (!ab_desc_p) {
         const volatile uint8_t *src=(const volatile uint8_t *)0x400d3176u;
-        static const char *const names[2][12]={
-            {"PITCH","DECAY","TONE","ATK","SWEEP","SAT","","ACCNT","LPF","LOW","HIGH","---"},
-            {"PITCH","DECAY","TUNE","ATK","TDEP","SAT","","ACCNT","LPF","LOW","HIGH","---"}
-        };
-        for(unsigned m=0;m<2;++m) {
+        for(unsigned m=0;m<AB_MODELS;++m) {
             uint8_t *d=desc[m];
             for(unsigned i=0;i<DESC_SIZE;++i) d[i]=src[i];
-            text(d+0x3c,"SYN",5); text(d+0x41,"ANALOG BD",13);
+            text(d+0x3c,"DRUM",5); text(d+0x41,"DRUMS",13);
             for(unsigned i=0;i<12;++i) {
-                text(d+0x4e + 6*i,names[m][i],6);
-                d[0x96+i]=ab_defaults[i];
+                text(d+0x4e + 6*i,ab_models[m].names[i],6);
+                d[0x96+i]=ab_models[m].defaults[i];
                 put32(d+0xa2+4*i,0);
                 put32(d+0xd2+4*i,i==6?0:128);
                 put32(d+0x102+4*i,i==8 ? (uint32_t)(uintptr_t)ab_lpf_fmt:0);
@@ -75,7 +165,7 @@ static uint32_t page_for(unsigned model) {
         }
         ab_desc_p=(uint32_t)(uintptr_t)(desc[0]+0x38);
     }
-    return (uint32_t)(uintptr_t)(desc[model!=0]+0x38);
+    return (uint32_t)(uintptr_t)(desc[model<AB_MODELS?model:0]+0x38);
 }
 uint32_t ab_track_page(const volatile uint8_t *type_ptr) {
     volatile uint8_t *part=part_base();
@@ -160,7 +250,7 @@ static uint32_t engine_bank = 0;
 static unsigned engine_part = 0, engine_track = 0;
 void ab_engine_select(unsigned model) {
     unsigned track=engine_track, part=engine_part;
-    if(model>1 || U32(BANK)!=engine_bank || (U8(PART_IDX)&3)!=part ||
+    if(model>=AB_MODELS || U32(BANK)!=engine_bank || (U8(PART_IDX)&3)!=part ||
        U8(0x100b14ccu)!=track || !ab_selected_source()) return;
     unsigned offset=0x1da+6+30*track;
     part_base()[offset]=(uint8_t)model;
@@ -175,20 +265,41 @@ void ab_engine_select(unsigned model) {
     ab_ui_tick();
     ((void (*)(void))0x4004d948u)();
 }
-static void engine_808(void) { ab_engine_select(0); }
-static void engine_909(void) { ab_engine_select(1); }
-static const char *const engine_labels[]={"001 808", "002 909"};
+/* One thunk per row: the stock list controller calls handlers[row](). */
+#define AB_ENGINE_THUNK(n) static void engine_##n(void) { ab_engine_select(n); }
+AB_ENGINE_THUNK(0)
+AB_ENGINE_THUNK(1)
+AB_ENGINE_THUNK(2)
+AB_ENGINE_THUNK(3)
+AB_ENGINE_THUNK(4)
+AB_ENGINE_THUNK(5)
+AB_ENGINE_THUNK(6)
+AB_ENGINE_THUNK(7)
+AB_ENGINE_THUNK(8)
+AB_ENGINE_THUNK(9)
+static const char *engine_labels[AB_MODELS];
 unsigned ab_engine_draw(void) {
     uint32_t window=U32(0x460e5e30u);
     if(!window || U32(0x460e5e2cu)!=(uint32_t)(uintptr_t)engine_labels) return 0;
     void *surface=(void *)(uintptr_t)(window+0x24);
     ((void (*)(void *))0x4003567cu)(surface);
     int height=(int)U32(window+0x28);
-    for(unsigned row=0;row<sizeof(engine_labels)/sizeof(engine_labels[0]);++row) {
-        int y=height-23-7*(int)row;
+    /* Scroll the window to follow the selection, and draw by SLOT rather than
+     * by index: slot i is always the i'th line down the window, whatever row
+     * it is showing. Derived from the selection the controller already
+     * publishes, so there is no guess about where it keeps its own offset. */
+    unsigned sel=U32(0x460e5e40u), first=0;
+    if(AB_MODELS>AB_ROWS) {
+        unsigned last=AB_MODELS-AB_ROWS;   /* only evaluated where it is >= 0 */
+        if(sel>=AB_ROWS) first=sel-AB_ROWS+1;
+        if(first>last) first=last;
+    }
+    for(unsigned i=0;i<AB_ROWS && first+i<AB_MODELS;++i) {
+        unsigned row=first+i;
+        int y=height-23-7*(int)i;
         ((void (*)(uint32_t,void *,int,int,int,const char *))0x40012bd8u)
             (0x400ba876u,surface,5,y,-1,engine_labels[row]);
-        if(row==U32(0x460e5e40u))
+        if(row==sel)
             ((void (*)(void *,int,int,int,int,int))0x40012254u)
                 (surface,3,y-1,(int)U32(window+0x24)-5,y+5,-1);
     }
@@ -196,18 +307,23 @@ unsigned ab_engine_draw(void) {
     return 1;
 }
 void ab_engine_open(void) {
-    static void (*const handlers[])(void)={engine_808, engine_909};
+    static void (*const handlers[AB_MODELS])(void)={engine_0, engine_1, engine_2, engine_3,
+       engine_4, engine_5, engine_6, engine_7, engine_8, engine_9};
+    for(unsigned m=0;m<AB_MODELS;++m) engine_labels[m]=ab_models[m].label;
     if(!ab_selected_source() || U32(0x460e5e30u)) return;
     engine_bank=U32(BANK);
     engine_part=U8(PART_IDX)&3;
     engine_track=U8(0x100b14ccu);
-    unsigned model=part_base()[0x1da+6+30*engine_track]!=0;
+    unsigned model=part_base()[0x1da+6+30*engine_track];
+    /* A Part saved under a shorter list can carry an id this build does not
+     * implement; the stock list controller would use it as an index. */
+    if(model>=AB_MODELS) model=0;
     /* Use the stock sample pool's 110 x 64 window at x=-1, y=0.
      * The stock list controller supplies arrows, LEVEL, YES and NO; only
      * its row content and drawing differ from the ordinary sample browser.
      */
     ((void (*)(uint32_t,unsigned,unsigned))0x4007ec60u)
-        (0x460e5e38u,6,sizeof(engine_labels)/sizeof(engine_labels[0]));
+        (0x460e5e38u,AB_ROWS,AB_MODELS);
     ((void (*)(uint32_t,unsigned))0x4007edb0u)(0x460e5e38u,model);
     U32(0x460e5e28u)=(uint32_t)(uintptr_t)handlers;
     U32(0x460e5e2cu)=(uint32_t)(uintptr_t)engine_labels;
@@ -216,7 +332,7 @@ void ab_engine_open(void) {
         (110,64,-1,0,1,0x4006d754u);
     U32(0x460e5e30u)=window;
     if(!window) return;
-    ((void (*)(uint32_t,const char *,unsigned))0x400570b8u)(window,"\xab MACHINE:ANALOG BD",0);
+    ((void (*)(uint32_t,const char *,unsigned))0x400570b8u)(window,"\xab MACHINE:DRUMS",0);
     ((void (*)(uint32_t))0x40031494u)(0x400ce0c4u);
     ab_engine_draw();
 }

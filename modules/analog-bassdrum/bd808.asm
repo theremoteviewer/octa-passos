@@ -8,6 +8,28 @@ zv01:
         move a1,n1
         move #>@B_INC@,r1
         move x:(r1+n1),x0
+; A machine's body frequency arrives in MB, written by the glue on this branch
+; only. Zero means the stock 808: its pitch table is untouched and
+; verify_analog_bd_exact stays bit-identical -- the harness drives this engine
+; directly, never runs the glue, and boots zeroed state, so it always takes the
+; stock path by construction. Nonzero means PITCH is a ratio around MB instead,
+; which is how one voice reaches past the stock table's 19-121 Hz.
+        move x:(r5+@MB@),a
+        tst a
+        beq zvp1
+        move a,y0
+; n1 still holds the PITCH knob index from the stock lookup above: nothing
+; between here and there touches it, so the re-read costs two words for nothing.
+        move #>@B_RATIO@,r1
+; ⚠️ `mpy y0,x1,a` assembles as MPYSU here -- caught by the module's own
+; disassemble-what-you-assemble gate, which refuses any su form. `y0,x0` is one
+; of the pairs that encode signed, and is the order the SWEEP decode already
+; uses two instructions above.
+        move x:(r1+n1),x0
+        mpy y0,x0,a
+        asl a
+        move a,x0
+zvp1:
         move x0,x:(r5+@INC@)
         move x:(r6+$1),a
         move a1,n1

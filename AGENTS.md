@@ -463,6 +463,172 @@ reason. A delay based at `0x30000` sweeps the rotation word, all four ACC
 buffers and both role locks every 16,384 samples and blows up any
 multi-server layout (found 12 Aug, RDS full-scale garbage).
 
+**A SOURCE MACHINE WRITES THE STOCK BLOCK'S TWO WORDS PER SAMPLE, AND A
+HARNESS THAT ASSUMES THE STRIDE CANNOT SEE IT WRITING ONE.** The per-track
+source block is interleaved stereo: 16 frames is 32 words, and `bd909.asm`
+stores every sample twice. Core B's noise voice stored it once, so the upper
+half of every block kept whatever was in X:$10..$1f. On Jesse's MK1 (4 Oct
+2026) that one defect was three different-sounding faults: a hat on T2 "ring
+modded the 808 on T1 with a low bit rate sound" (alternate words were T1's
+kick), and TRX CY and TRX MA "rang out a continuous high pitched noise that
+kept going after the trig was removed, until the sequencer stopped" (the
+loudest half of the attack repeating at the 2,756 Hz block rate). The voice's
+own envelope was decaying correctly throughout, so every hypothesis that
+started from the envelope was wrong. **`tools/harness/bdnoise.py` had rendered
+it clean five times** because it read `a[::2]` -- it modelled the stride
+instead of reading the block, so half the samples it measured were the
+previous block's stale words and the result still looked like a hi-hat with a
+plausible envelope. Sister of the send_probe/XBUS entries: a measurement that
+models the thing it is checking cannot see that thing being wrong. A source
+gate pre-loads EVERY word of the block with a marker and refuses any word the
+engine did not write. And fixing it exposed the next layer: with the output
+finally real, every band measured 0.55-0.59 of target and every Q double,
+because `f` and `damp` are stored halved (2*sin(pi*fc/SR) reaches 1.82, 1/Q
+reaches 1.9, neither fits Q23) and the engine's comment claimed "the `mac`
+restores it" -- the exact belief the "reading a0" trap above refutes. Double
+the PRODUCT with `asl`, never the accumulated state.
+
+**A PARAMETER IS NOT A MECHANISM, AND A DISTINCTNESS GATE THAT MEASURES
+PARAMETERS CANNOT SEE THE DIFFERENCE.** This is the end of the chain above, and
+the most expensive entry in it. Five drum machines shared one renderer -- noise
+through a band-pass -- at different table indices. Four real defects were found
+in it on hardware and fixed (stereo stride, halved coefficients, identity in
+the knob defaults, a clamping trim), and after all four `bdnoise.py` could
+prove, exhaustively over all 128 knob positions, that every pair differed in
+band or decay -- and Jesse's verdict on flashing it was still "the different
+decay times are cool, but I'm looking for each sound to be different" (5 Oct
+2026, the second time he had said it). He was right every time. Band-passed
+noise with a long decay is band-passed noise; no parameter separation makes it
+a hi-hat, because the thing that distinguishes a hi-hat from a maraca is that
+one is six inharmonic oscillators and the other is noise. The fix was three
+more RENDERERS (`modules/analog-bassdrum/bdperc.asm`), a renderer field in the
+per-model table, and a separation gate that counts a different renderer as
+absolute. Rule: when a family of voices is one code path at different
+coefficients, say so out loud and early -- "they all sound the same" is the
+predicted outcome, not a bug report to be answered with better numbers.
+
+**AND A PARAMETER RANGE IS PART OF A MACHINE'S IDENTITY: A TRIM WIDE ENOUGH TO
+CLAMP MERGES MACHINES.** The fix above moved the defining numbers into a
+per-model table and made each knob a +-64 offset around them, clamped into the
+128-entry curve. A track carries 127 in a knob the moment anyone turns it up,
+and at 127 TRX CH, TRX OH and TRX CY all land on (127, 127, 127) -- three rows
+that are literally one machine, with every row sharing a band. Jesse reported
+"they all do and sound the same" a SECOND time (5 Oct 2026) for this reason,
+and every core B gate had passed because every one of them ran at 64/64/64,
+where the trim is exactly zero: the tests exercised the single position at
+which the defect cannot appear. The span is now +-16 steps, chosen because
+`dspnoise.separations()` walks all 128 positions for every pair and proves each
+one is separated in at least one parameter EVERYWHERE; the gate refuses an
+empty separation, and renders every machine at the stored 127 as well. Rule:
+when a machine is a point in a parameter space, gate the whole reachable
+space, not the default -- and prove non-collision rather than measuring five
+spot cases.
+
+**A MACHINE WHOSE IDENTITY IS ITS KNOB DEFAULTS IS NOT A MACHINE ON AN EXISTING
+TRACK.** `ab_engine_select` writes the model id and nothing else -- "stored
+patches retain their bytes, including when changing engines" is the 808/909
+contract -- and a page descriptor's defaults apply only to a NEW assignment. So
+five core B rows that differed only in `defaults[0..2]` were, on any track that
+already existed, one machine selected five ways ("TRX OH and HH sounded the
+same as CH", same day). Defining numbers live in a per-model table the ENGINE
+reads (`dspnoise.BASES`, packed one word per machine), with the knobs as
+offsets around 64; the harness then runs every machine with IDENTICAL knobs,
+which is the only arrangement in which a sameness bug is visible at all.
+
+**THE BINDING BUDGET FOR A NEW EFFECT MAY BE THE ROM NAME CAVE, NOT THE DSP
+GROUND, AND THE TWO ARE NOWHERE NEAR EACH OTHER.** `passos-pl` has 834 of
+3,376 DSP words spare — room for the whole eight-partial RESONATOR insert
+three times over — and the module still cannot be added, because a cloned page
+descriptor is **384 B** of the ROM cave and that remix has **88 B** left
+(NOTE SCALE's 3,148 B, STOP GUARD's 406 B and its three 0x80-aligned tables
+spend the one 5,986-byte zero run). The failure surfaces as a completely
+unrelated-looking line, from the module AFTER the one that overflowed:
+`STOP GUARD table perso_labels at 0x400d7b80 not free`. Rules: price a new
+effect in cave bytes as well as DSP words, before writing it; read
+`cave: ... N B of cave left` from the build log of the remix you are targeting,
+not from a smaller one; and when the cave is the wall, the cheap way through is
+a stock descriptor used IN PLACE (a stock row already gets "no clone, no
+code" -- `STOCK_ROWS` -- while a module carrying a stock id does not), not
+trimming a feature the firmware exists for. `modules/resonator/README.md`
+works the three options out.
+
+**`make image` DOES NOT RECOMPILE A MODULE'S `.c`, AND A PANEL EDIT THAT NEVER
+REACHED THE IMAGE LOOKS EXACTLY LIKE A PANEL EDIT THAT DID NOT WORK.** Analog
+BD's ColdFire side is checked in as `control.s` — the author's gcc output,
+because `generate.py` is a compiler-identity oracle — and the build assembles
+that, not `control.c`. So an afternoon's edits to the model table (eleven rows,
+fifteen knob names, the DRUMS rename) built cleanly, placed 2,454 words, and
+produced an image whose browser was the old ten rows with "--" on three knobs
+each. `python3 modules/analog-bassdrum/generate.py` regenerates; `--check` is
+the gate and it is in `make check`, not in `make image`. Rule: after editing a
+module's `.c`, regenerate before building, and never read a `make image` log
+as evidence that a panel change is in the image — the strings are inside a
+PACKED runtime, so `strings` on the image finds nothing either way. What does
+answer it is `strings out/platform/runtime/runtime.elf`, the linked runtime
+before it is packed. Same family as "THE BINARY IS NOT THE SOURCE".
+
+**A PACKED FIELD AT THE TOP OF A 24-BIT WORD IS SIGNED, AND A DISPATCH CHAIN
+WITH AN UNCONDITIONAL LAST ARM WILL HIDE THAT FOR AS LONG AS THE BROKEN VALUE
+HAPPENS TO BELONG THERE.** `dspnoise.base_words()` packs a drum model as
+`engine<<21 | band<<14 | decay<<7 | width`, so engine 4 and up SET BIT 23:
+`move x:(..),a` sign-extends into A2, `asr #$15` preserves the sign, and
+ENG_FM (4) decoded as **-4**. The band, decay and width fields escape only
+because each of their extractions happens to end in an `and`. For two builds
+nothing showed, because the dispatch's last arm was an unconditional
+`bra zf01` — every unmatched value, -4 included, landed on the FM engine,
+which is where -4 was supposed to go. Adding a sixth engine moved the
+fall-through to the resonator bank and PL FM started rendering a resonator:
+a NEW engine appearing to break an OLD row, with the fault 800 words away
+from the symptom. Jesse's hardware note had been "FM im not sure", which was
+the kindest possible description of a row that was only ever right by
+accident. Rules: mask a packed field, never trust `asr` alone; and end a
+dispatch chain on a value it has CHECKED, or model the extraction in Python
+and assert it (`dspnoise.engine_of`, in `verify_drum_rows`) — the arithmetic
+is four lines and it is the only cheap way to see a field the DSP reads
+differently from the generator that wrote it.
+
+**A WORD THE SHARED DECODE WRITES EVERY BLOCK IS NOT A SLOT A RENDERER MAY
+NAME FOR ITSELF — AND THE SYMPTOM IS A PARAMETER THAT ALMOST WORKS.** Core B's
+voice block is ten shared words and then a pool each renderer aliases, except
+that three of the shared decode's own outputs (`HPK`, `MIX`, `BGN`) had been
+left sitting IN the pool. `MIX` was slot 16; so were the FM engine's index
+envelope and the ring engine's second resonator's `y[n-2]`. The FM's IDEC knob
+could therefore only act for sixteen samples at a time — it measured as a knob
+that moved the output by 0.01 of peak, which is "named and does nothing", the
+exact complaint the knob gate exists for. The resonator was handed 0.5 four
+thousand times a second, which is not a resonator that rings for 400 ms but an
+oscillator that never stops, bounded only by the state store's limiter: it
+measured as a 1-second decay **that did not change when the strike was made
+forty times quieter**, and that insensitivity is what gave it away, not the
+decay. Fix: the shared words are 0..12 and every pool starts at 13, with
+`dspnoise.SHARED` naming them and an assertion refusing any other key that
+resolves to one. Sister of "a persistent slot that init does not clear": an
+overlay is only safe while exactly one writer owns each word per block.
+
+**A STOCK EFFECT'S SPAN IS NOT SELF-CONTAINED, AND THE DOCUMENT THAT SAID IT
+WAS CITED A MEASUREMENT THAT COULD NOT SEE IT.** `tools/remix/stock.py` stated
+that each of the thirteen DSP effects is entered only by its own dispatch
+entry, "measured, `tools/build/dsp_reach.py` over both payloads" — and
+dsp_reach measures REACHABILITY, whether each instruction is reached from
+*some* entry point. A call that crosses a span boundary is reached like any
+other, so the sweep's 95.8 %/98.5 % was never evidence about boundaries.
+Three effects host a routine another effect calls (`stock.CROSS_ENTRIES`,
+re-derived by `tools/verify/verify_stock_spans.py`): FILTER hosts two, used by
+PLATE, SPRING, DARK, DJ EQ and SPATIALIZER; SPRING hosts the 35-word helper
+DARK calls three times; **DARK hosts 93 words at +0x3ce that are PLATE's own
+tail**. Harvesting DARK while keeping PLATE therefore placed the Analog BD's
+engines over PLATE's tail: PLATE rendered 328 instructions short of stock and
+`verify_analog_bd_reverbs` failed on PLATE, an effect whose own 594 words were
+bit-identical (3 Oct 2026). Three wrong hypotheses came first — the relocated
+helper's arithmetic, the enlarged X record, the dispatch — and the answer came
+from restoring candidate spans in the built image one at a time, which took
+one step. The offsets are IDENTICAL in both payloads, so they are written as
+offsets into the host's span, never as addresses. Rules: harvesting an effect
+frees its words only as far as `stock.reserved_spans` allows; and whoever
+overwrites a span owes it the dispatch stub too — a Part saved while the
+effect existed still names its id, so an unstubbed entry is a jump into
+whatever replaced it.
+
 **AN FX2 ID IS ALSO AN FX1 ID: the DSP dispatch tables are indexed by the
 raw id and shared by both menus.** A module on a stock effect's id replaces
 that effect's code wherever it is selected, FX1 included, and a remix that

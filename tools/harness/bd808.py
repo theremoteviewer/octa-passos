@@ -23,7 +23,62 @@ def render(labels,blocks,tag):
     return [v/8388608 for v in a[::2]],peak
 def reference(blocks):
     v=dsp808.Voice();return [x for k,t in blocks for x in v.block(k,t)]
+def base_machines(labels=None):
+    """The per-machine base-frequency path, which NOTHING else measures.
+
+    ⚠️ MB IS WRITTEN BY THE GLUE, AND NO HARNESS RUNS THE GLUE. A machine with
+    a base frequency takes a branch inside this engine that every other gate
+    here walks straight past: `verify_analog_bd_exact` drives the engine
+    directly from zeroed state, so MB is always 0 and the stock pitch path is
+    always the one taken -- by construction, which is exactly what keeps the
+    808 bit-identical. The consequence is that PL TOM and PL CNG would have
+    shipped with their only verification being "it assembled". So this builds
+    a four-word stub that writes MB and falls into the voice, which is what the
+    glue does, and measures the pitch that comes out.
+    """
+    import dspnoise
+    bd909.build_host(); OUT.mkdir(parents=True, exist_ok=True)
+    shared = dsp909.default_layout(0x1000); lay = dsp808.layout(0x3200)
+    bad = []
+    for model, hz in sorted(dsp808.MACHINE_BASE_HZ.items()):
+        mb = dsp909.q24(2 * hz / 44100)
+        stub = f"zt01:\n        move #>${mb:06x},a\n        move a,x:(r5+$3d)\n        bra zv01\n"
+        syms, _ = dsp909.assemble(0x2000, {}, OUT / 'base.bin',
+                                  stub + dsp808.source(lay, shared))
+        (OUT / 'base.data').write_text(dsp909.data_lines(shared) + dsp808.data_lines(lay))
+        k = INIT.copy(); k[6] = model; k[7] = 100
+        script = OUT / f'base{model}.script'
+        script.write_text(''.join(' '.join(map(str, k)) + f" {0 if i == 0 else -1}\n"
+                                  for i in range(int(44100 / 16))))
+        subprocess.run([str(bd909.HOST), '-code', str(OUT / 'base.bin'), '-org', '2000',
+                        '-entry', f"{syms['zt01']:x}", '-init', f"{syms['zv02']:x}",
+                        '-data', str(OUT / 'base.data'), '-script', str(script),
+                        '-out', str(OUT / f'base{model}.raw')], check=True, capture_output=True)
+        a = array.array('i'); a.frombytes((OUT / f'base{model}.raw').read_bytes())
+        y = [v / 8388608 for v in a[::2]]
+        peak = max(abs(v) for v in y)
+        sys.path.insert(0, str(bd909.ROOT / 'tools/harness'))
+        import bdnoise
+        got = bdnoise.band_hz(y)
+        note = []
+        if peak < 1e-3:
+            note.append('silent')
+        # the body settles slightly below its base after the sweep, so a fifth
+        # either way is the band this can claim
+        if got and not 0.66 <= got / hz <= 1.5:
+            note.append(f'{got:.0f} Hz against a {hz:.0f} Hz base')
+        print(f'  model {model}: base {hz:6.1f} Hz -> {got:6.0f} Hz, peak {peak:.4f}'
+              + ('   FAIL: ' + '; '.join(note) if note else ''))
+        if note:
+            bad.append((model, note))
+    if bad:
+        raise AssertionError(f'the base-frequency path is wrong for {bad}')
+    print(f'PASS base machines: {len(dsp808.MACHINE_BASE_HZ)} bases, each within a fifth '
+          f'of its own number through the glue\'s MB path')
+
+
 def main():
+    base_machines()
     syms=build();worst=-999
     cases=[('default',{},(4410,)),('short',{1:0},(4410,)),('long',{1:127},(4410,)),('dark',{2:0},(4410,)),('bright',{2:127},(4410,)),('low',{0:0},(4410,)),('high',{0:127},(4410,)),('drive',{5:127},(4410,)),('loweq',{9:127},(4410,)),('higheq',{10:127},(4410,)),('sweep',{4:127},(4410,)),('nosweep',{4:0},(4410,)),('retrigger',{},(4410,4451,7001,12345))]
     for name,mods,at in cases:

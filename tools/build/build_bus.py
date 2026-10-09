@@ -1039,9 +1039,12 @@ def main():
             sys.exit(f"{_u.label}: past the stock zero run")
         img[_at - BASE:_at - BASE + len(_b)] = _b
         _sym[_u.label] = _syms
+        # NB: the "matches the author's build" tail is built OUTSIDE the
+        # f-string -- an apostrophe inside an f-string expression needs a
+        # backslash, which Python 3.11 refuses (3.12 allows it).
+        _tail = (" -- matches the author's build at 0x%08x" % _uref[0]) if _uref else ""
         print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
-              f"{' (pinned)' if _u.cave_addr is not None else ''}"
-              f"{' -- matches the author\'s build at 0x%08x' % _uref[0] if _uref else ''}")
+              f"{' (pinned)' if _u.cave_addr is not None else ''}" + _tail)
         if _in:
             if _at + len(_b) > _cave_top:
                 _cave_top, _last_placed = _at + len(_b), f"{_m.key}'s {_u.label}"
@@ -2229,6 +2232,39 @@ mkgo:""",
                 runs[-1]["words"] += _rec[2]
             else:
                 runs.append({"base": _rec[1], "words": _rec[2]})
+        # ⚠️ A HARVESTED SPAN IS NOT ALWAYS WHOLLY PLACEABLE. Three of the
+        # thirteen effects host a routine ANOTHER effect calls (stock.
+        # CROSS_ENTRIES, measured; tools/verify/verify_stock_spans.py) -- FILTER
+        # hosts two, used by PLATE, SPRING, DARK, DJ EQ and SPATIALIZER -- so a
+        # remix that gives up the host and keeps a caller must leave those words
+        # alone. This file used to say each effect was self-contained, citing a
+        # reachability sweep that is structurally blind to a span boundary; the
+        # bill was a PLATE REV that stopped matching stock (3 Oct 2026,
+        # ab_image.py _ground). Split the run around the reservation rather
+        # than refusing: everything below it is still ground.
+        _reserved_notes = []
+        # NOT `_reserve`: that name is already the platform's DRAM reservation
+        # 900 lines up, and taking it fed platform_build.build a dict.
+        _keepspans = stock_mod.reserved_spans(_harvest, tag)
+        for _host, (_ra, _rn) in sorted(_keepspans.items(), key=lambda kv: kv[1][0]):
+            _split = []
+            for _r in runs:
+                _lo, _hi = _r["base"], _r["base"] + _r["words"]
+                if _hi <= _ra or _lo >= _ra + _rn:
+                    _split.append(_r)
+                    continue
+                if _ra > _lo:
+                    _split.append({"base": _lo, "words": _ra - _lo})
+                if _hi > _ra + _rn:
+                    _split.append({"base": _ra + _rn, "words": _hi - (_ra + _rn)})
+            runs = sorted(_split, key=lambda r: r["base"])
+            # Printed with the region summary below, not here: the build report
+            # is API and this line only exists for a harvest that triggers it.
+            _reserved_notes.append(
+                f"  {_host} P:0x{_ra:05x}..0x{_ra + _rn - 1:05x} ({_rn} words) "
+                f"RESERVED -- "
+                f"{', '.join(sorted(c for _o, _cs in stock_mod.CROSS_ENTRIES[_host] for c in _cs if c not in _harvest))} "
+                f"calls into it and this remix keeps it")
         for _r in runs:
             _r["cursor"] = _r["base"]
         # With nothing harvested there is no region at all -- legal, and
@@ -2236,7 +2272,10 @@ mkgo:""",
         # if anything wanted placing, so the rest of this runs over an empty
         # stream and writes nothing.
         base_a = region[0][1] if region else 0
-        budget = sum(m[2] for m in region)
+        # Over the RUNS, not the records: identical while nothing is reserved
+        # (the runs partition the region exactly) and short by the reservation
+        # when something is, which is what FREE has to mean.
+        budget = sum(r["words"] for r in runs)
 
         def _end_of_run(a):
             """End address of the run containing `a` (its own value if none)."""
@@ -2950,6 +2989,8 @@ hostquit:
                       f"{_r['words']:5d} w  used "
                       f"{_r['cursor'] - _r['base']:5d}  spare "
                       f"{_e - _r['cursor']:5d}  {_in}")
+        for _note in _reserved_notes:
+            print(_note)
 
         # ---- donor ids -> the null stub, BUT ONLY WHERE OUR CODE LANDED --
         _hv = {k: _sp[k] for k in _harvest}

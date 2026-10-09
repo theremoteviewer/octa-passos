@@ -49,6 +49,15 @@ zg03:
         asl     a
         move    x:(r4+$e),b            ; MODEL, masked transport byte
         and     #>$7f,b
+; ⚠️ WHICH VOICE A MODEL RUNS IS A TABLE, NOT model!=0. With two models the
+; test could be "zero is the 808"; a third model on the 808's voice would have
+; been sent to the 909's engine and its state block. M_ENGINE[model] says which
+; voice, and it is read HERE rather than in the engine because
+; verify_analog_bd_exact drives the engines directly and never runs this glue --
+; so the stock 808 and 909 stay bit-identical by construction.
+        move    b1,n1
+        move    #>@M_ENGINE@,r1
+        move    x:(r1+n1),b
         move    #>@VBASE@,x0
         move    #>@V808@,x1
         tst     b
@@ -77,12 +86,32 @@ zg04:
         lua     (r5+$30),r6
         move    #>$10,n7
         move    #$0,r0
-        move    x:(r6+$6),a
+        move    x:(r6+$6),a            ; MODEL -> which voice, via the same table
+        move    a1,n1
+        move    #>@M_ENGINE@,r1
+        move    x:(r1+n1),a
         tst     a
         beq     zg05
+; three voices now: 0 is the 808, below the midpoint core B's noise voice,
+; above it the 909. Core B shares the 909's voice block, which is why the base
+; chosen above is already right for it.
+        move    #>@MIDNZ@,x1
+        cmp     x1,a
+        blt     zg08
         bsr     zq01
         bra     zg06
+zg08:
+        bsr     zn01
+        bra     zg06
 zg05:
+; The 808 branch, and only here: this machine's body frequency into MB. The 909
+; uses every state slot, so this write must never reach its block.
+        move    x:(r4+$e),b
+        and     #>$7f,b
+        move    b1,n1
+        move    #>@M_BASE@,r1
+        move    x:(r1+n1),b
+        move    b,x:(r5+$3d)
         bsr     zv01
 zg06:
         move    ssh,x0                  ; drop the seam's return: the stock

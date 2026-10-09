@@ -696,6 +696,28 @@ def main():
     _want = {"mods": (), "ok-ms": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (), "plocks-p2": (), "analog-bassdrum": ("SPRING REV",),
+             # analog-bassdrum + USB MIDI + USB AUDIO OUT TRACKS MAIN CUE: the
+             # USB units are ColdFire/DRAM and place no DSP words, so the BD's
+             # engines are the only harvest and SPRING REV is the only row given up
+             "md-kit": ("SPRING REV",),
+             # PassOS + the BD + USB: the scale system and the STOP guard are
+             # ColdFire caves and the USB units are DRAM, so ANALOG BD's
+             # engines are still the only harvest and SPRING REV the only row
+             "the-passenger-md": ("SPRING REV", "DARK REV"),
+             # PassOS + the six-row drum machine + USB. Two rows given up and
+             # no more: PLATE's 93-word tail sits at the TOP of DARK's span, so
+             # keeping PLATE splits the ground and the four effects above the
+             # tail are unreachable as one code stream (remixes/passos-pl).
+             # PassOS + the drum machine + USB. Jesse's limits, 5 Oct 2026:
+             # keep ONE reverb and keep CHORUS. PLATE is the one to keep -- it
+             # is cheaper in both words (594 against 1,067) and cycles (183.9
+             # against 193.2) AND gives more ground, because keeping DARK means
+             # preserving the 35-word helper DARK calls inside SPRING. PLATE's
+             # own tail inside DARK is RELOCATED, which is what lets the run
+             # continue through COMPRESSOR, LO-FI, DJ EQ and COMB FILTER.
+             "passos-pl": ("SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
+                           "DJ EQ", "COMB FILTER"),
+             "the-passenger": (),
              # Zac Kyoti's ColdFire modules on the stock effects, no DSP words
              **{_k: () for _k in ("direct-jump-kyoti", "batch-bugfixes", "reload-from-project",
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",

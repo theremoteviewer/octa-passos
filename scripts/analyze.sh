@@ -30,7 +30,7 @@ for f in "${ARTIFACTS[@]}"; do
   echo "# $base"
   echo "############################################################"
   ls -la "$f"
-  echo "sha256: $(shasum -a 256 "$f" | awk '{print $1}')"
+  echo "sha256: $(sha256sum "$f" | awk '{print $1}')"
   echo
 
   echo "--- [1] Entropy (compressed/encrypted vs. plain code) ---"

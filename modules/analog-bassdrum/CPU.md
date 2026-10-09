@@ -100,6 +100,16 @@ The builder now copies that routine from the user's pristine image into the last
 | SPRING REV (comparison only; harvested in this remix) | 257.5 |
 | Mini Verb (comparison only; not composable in this remix) | 310.4 |
 | DSP 909, including desk/LPF | 322.1 |
+| **core B (hats, cymbals, maracas)** | **49.8** |
+
+**Core B is the cheapest thing in this table by a factor of four**, and that is
+structural rather than lucky: a 24-bit LCG, a two-multiply state-variable
+filter and a one-multiply envelope per sample, with no desk stage, no LPF and
+no pitch sweep. Measured 4 Oct 2026 under the same host (64 blocks, TRX CY's
+defaults, one trig: peak 796 instructions/block, mean 48.9/sample) after the
+coefficient scale was corrected and the output made stereo. Adding more
+machines on this voice costs one packed X word each and no instructions at all,
+so the budget is not what limits the family -- the code for a NEW voice is.
 
 The 808 is cheaper than SPRING; the 909 is slightly more expensive than Mini Verb. Neither voice has a full inactive bypass: silent 909 blocks still execute about 320 instructions/sample. Capacity estimates therefore cannot assume that silence releases DSP capacity.
 

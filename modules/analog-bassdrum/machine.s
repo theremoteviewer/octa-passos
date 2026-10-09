@@ -323,7 +323,13 @@ ab_tick_hook:
         jsr ab_ui_tick
         jmp 0x40052228
 ab_name:
-        .asciz "ANALOG BD"
+| ⚠️ THE DISPLAY NAME ONLY. The Part's stored signature is still the two bytes
+| 'A','B' (signed_track in control.c) and MUST stay that way: it is what marks
+| a track as ours in every project already saved. The module's registry key is
+| still "ANALOG BD" for the same reason -- every remix names it. This string is
+| what the machine chooser and SRC SETUP draw, which is what Jesse asked to
+| change: "call it drums instead of BD in the main menu" (5 Oct 2026).
+        .asciz "DRUMS"
 ab_reject_name:
         .asciz "AB: INVALID TRACK"
         .balign 2

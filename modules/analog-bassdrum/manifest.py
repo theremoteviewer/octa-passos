@@ -81,6 +81,11 @@ MODULE=Module(
            Gate("tools/harness/bd808.py", remix_arg=False),
            Gate("tools/harness/verify_analog_bd_exact.py", remix_arg=False),
            Gate("tools/harness/verify_analog_bd_levels.py", remix_arg=False),
+           # core B: it sounds, it fills the whole stereo block, it stops, it
+           # lands on its band, and the five rows are five machines under
+           # IDENTICAL knobs. Every one of those is a fault Jesse found on the
+           # MK1 on 4 Oct 2026 that no gate here could see.
+           Gate("tools/harness/bdnoise.py", remix_arg=False),
            Gate("tools/harness/verify_analog_bd_reverbs.py", remix_arg=False, stage="image"),
            Gate("tools/verify/verify_analog_bassdrum_cf.py", remix_arg=False,
                 venv=True, stage="image"),

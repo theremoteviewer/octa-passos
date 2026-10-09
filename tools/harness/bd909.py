@@ -46,10 +46,18 @@ def build_host():
     if HOST.exists() and HOST.stat().st_mtime > src.stat().st_mtime:
         return
     OUT.mkdir(parents=True, exist_ok=True)
+    # ⚠️ ON LINUX the emulator's JIT profiling support pulls in Intel's ITT /
+    # jitprofiling symbols (iJIT_NotifyEvent, __itt_thread_set_name_ptr__3_0),
+    # which CMake satisfies from the vendored vtuneSdk target. The bare `c++`
+    # link here does not, so every ANALOG BD gate failed to BUILD -- not to
+    # measure -- in a Linux container (2 Oct 2026). Appended when it exists,
+    # so the macOS link that never needed it is unchanged.
+    _vtune = pathlib.Path(f'{V}/build/source/vtuneSdk/libvtuneSdk.a')
+    _extra = ([str(_vtune), '-ldl'] if _vtune.exists() else [])
     subprocess.run(['c++', '-O3', '-DNDEBUG', '-std=gnu++17', '-DASMJIT_STATIC', '-DDSP56300_DEBUGGER=0',
                     f'-I{V}/source', f'-I{V}/source/asmjit/src', str(src),
                     f'{V}/build/source/dsp56kEmu/libdsp56kEmu.a', f'{V}/build/source/dsp56kBase/libdsp56kBase.a',
-                    f'{V}/build/source/asmjit/libasmjit.a', '-lpthread', '-o', str(HOST)],
+                    f'{V}/build/source/asmjit/libasmjit.a', *_extra, '-lpthread', '-o', str(HOST)],
                    check=True, capture_output=True)
 
 

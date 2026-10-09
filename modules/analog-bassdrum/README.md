@@ -1,16 +1,26 @@
 # Analog BD
 
-One native Octatrack track machine with **808 / 909** selection in its
-sample-pool-style engine browser. Both original fixed-point synthesis engines run on
-the DSP, upstream of stock AMP and both track FX slots. No recordings are
-embedded. Earlier image ANALOGBD1 was auditioned on an MK1; the current
-engine browser and eight-track changes still need hardware qualification.
+One native Octatrack track machine with a sample-pool-style engine browser.
+Every engine is original fixed-point synthesis running on the DSP, upstream of
+stock AMP and both track FX slots. No recordings are embedded. Earlier image
+ANALOGBD1 was auditioned on an MK1; the current engine browser and eight-track
+changes still need hardware qualification.
+
+**Seven machines on two voices.** The 808 and 909 are a body oscillator (core
+A); rows 3-7 are a separate noise/metallic voice (core B) and are not reachable
+as a bass-drum preset at any knob setting — see
+[DSPNOISE.md](DSPNOISE.md).
 
 | Model / page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
 | 808 SRC | PITCH | DECAY | TONE | ATK | SWEEP | SAT |
 | 909 SRC | PITCH | DECAY | TUNE | ATK | TDEP | SAT |
+| TRX CH / OH, EFM HH, TRX CY / MA SRC | PITCH | DECAY | WIDTH | — | — | — |
 | Both SRC SETUP | — | ACCNT | LPF | LOW | HIGH | — |
+
+On core B, **PITCH is the band centre** (200 Hz to 16 kHz), DECAY the
+amplitude tail (8 ms to 1.2 s) and **WIDTH the resonance** (Q 0.7 to 16).
+ACCNT still sets level. The remaining SRC cells are inert on those rows.
 
 Both models use the same Mackie desk stage and output LPF. SAT controls
 drive; LOW/HIGH are neutral at 64. LPF is OFF at 0, 500 Hz at 1, **ORIG**

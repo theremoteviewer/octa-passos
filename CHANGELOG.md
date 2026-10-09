@@ -11,6 +11,23 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- Analog BD is a drum machine: eleven browser rows over eight mechanisms
+  (808 and 909 bit-identical; band-passed noise for the two Machinedrum hats;
+  six inharmonic square oscillators; two rung shell modes over wires; a burst
+  train; two-operator FM; the body engine at its own base frequency for tom
+  and conga; and a bank of four tuned two-pole resonators). The pool title
+  and the main-menu row read DRUMS. **Six working parameters on every row** —
+  each renderer's own fixed constants became knobs 3 and 4, with DRIVE on
+  knob 5; eleven of the fifteen cost nothing per sample, and all three are
+  neutral at the values a Part saved before them carries. 2,454 P words per
+  payload in a 3,376-word ground, 39 of the 48 state words per voice, no new
+  X curves. Three defects found and fixed on the way, all in AGENTS.md: the
+  engine field in the packed per-model word is the top three bits of a signed
+  24-bit value, so ENG_FM decoded as −4 and only ran because the dispatch's
+  last arm was unconditional; three outputs of the shared decode sat in the
+  per-renderer slot pool, so the FM engine's index envelope and a resonator's
+  `y[n-2]` were overwritten every block; and `passos-pl` listed four effects
+  on the stock FX1 chooser whose code it overwrites.
 - Analog BD: engine selection now lives only in the pool-style browser; the
   former SRC SETUP MODEL control and its encoder editing path are removed.
   Both source outputs are 12.04 dB louder than the 29 September revision,

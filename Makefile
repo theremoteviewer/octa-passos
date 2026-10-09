@@ -225,6 +225,11 @@ verify-shared: ## The gates that do not depend on the remix: ledger selftest, sl
 	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
+	@# Which stock effect spans another effect calls INTO. Re-derived from the
+	@# user's own image, because "each effect is self-contained" was written
+	@# down from a reachability sweep that could not see a span boundary, and
+	@# a remix that harvests a host and keeps a caller breaks the caller.
+	python3 tools/verify/verify_stock_spans.py
 	python3 tools/verify/verify_replaces.py --static
 	python3 tools/verify/verify_docs.py
 	$(PY) tools/verify/verify_remixer.py

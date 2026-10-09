@@ -264,12 +264,20 @@ MODULES = (
 # that; the build reports which survived and the remixer reads its answer
 # (state.measure). Kept as a tuple because the ORDER is the meaning.
 # ---- where each effect's CODE lives, per payload ---------------------------
-# The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
-# self-contained: no control flow leaves its own span and nothing enters it
-# but its own dispatch entry (measured, tools/build/dsp_reach.py over
-# both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
-# whose operand is a loop END and therefore exclusive). That is what makes
-# any of them harvestable for its words, not just the three reverbs.
+# The thirteen DSP effects are laid out CONTIGUOUSLY, which is what makes any
+# unbroken run of them placeable ground.
+#
+# ⚠️ RETRACTED 3 Oct 2026: "every one of them is self-contained: no control
+# flow leaves its own span and nothing enters it but its own dispatch entry
+# (measured, tools/build/dsp_reach.py over both payloads)". THREE of them host
+# a routine another effect calls, and dsp_reach cannot see it: it measures
+# REACHABILITY -- "is every instruction reached from some entry point" -- and a
+# call that crosses a span boundary is reached, so the sweep reports 95.8 %/
+# 98.5 % and says nothing about boundaries. AGENTS.md's own rule ("a
+# measurement can be structurally blind to the thing you are using it to rule
+# out") applied to the claim that cited it. See CROSS_ENTRIES below; the cost
+# was a PLATE REV that stopped matching stock the first time a remix harvested
+# DARK REV while keeping PLATE.
 #
 #   payload A  P:0x007d1..0x01fdf     payload B  P:0x00591..0x01d9f
 #   6,158 words each, same effects, same sizes, different bases.
@@ -327,6 +335,66 @@ def p_spans(payload: str) -> dict[str, tuple[int, int]]:
 
 
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
+
+# ---- control flow that CROSSES an effect span ------------------------------
+# {host effect: ((offset into its span, (effects that call in, ...)), ...)}
+#
+# Measured 3 Oct 2026 by disassembling both stock payloads at their load
+# addresses (tools/build/dsp_disasm_all.py) and classifying every jsr/jmp/jcc
+# whose target lies in a different effect's span than its own site.
+# `tools/verify/verify_stock_spans.py` re-derives this from the image and
+# refuses any difference, so a firmware whose layout differs is loud rather
+# than silently harvestable.
+#
+#   FILTER      +0x1dc  <- PLATE REV, SPRING REV, DARK REV, DJ EQ
+#               +0x1f5  <- SPATIALIZER
+#   SPRING REV  +0x334  <- DARK REV   (the 35-word helper ab_image relocates)
+#   DARK REV    +0x3ce  <- PLATE REV  (PLATE's tail, 93 words to the span end)
+#
+# ⚠️ OFFSETS, NOT ADDRESSES. The payloads are linked separately -- the same
+# routine is P:0x1a47 in A and P:0x1807 in B -- and every one of these entries
+# sits at the SAME offset into its host's span in both. That is the form the
+# AGENTS.md trap about absolute stock addresses asks for.
+CROSS_ENTRIES = {
+    "FILTER":     ((0x1dc, ("PLATE REV", "SPRING REV", "DARK REV", "DJ EQ")),
+                   (0x1f5, ("SPATIALIZER",))),
+    "SPRING REV": ((0x334, ("DARK REV",)),),
+    "DARK REV":   ((0x3ce, ("PLATE REV",)),),
+}
+
+
+def reserved_spans(harvest, payload: str = "A") -> dict[str, tuple[int, int]]:
+    """{host effect: (P address, words)} a harvest must NOT overwrite.
+
+    A harvested effect whose span is entered by an effect this remix KEEPS is
+    only partly placeable: the entry and everything above it in that span stay
+    stock, because the keeper calls into them.
+
+    ⚠️ CONSERVATIVE: the reservation runs from the entry to the END of the host
+    span, not to the routine's own `rts`. Finding the rts needs a
+    disassembler, which the build does not have; over-reserving costs words
+    and under-reserving costs a unit. For the only case any remix has met --
+    DARK's tail, which IS the end of its span -- the two are the same.
+
+    ⚠️ "HARVESTED" IS NOT YET "DEAD". A caller counts as dead here because it
+    is harvested, but harvesting only frees its words -- the placer may never
+    reach them, and an untouched effect keeps its dispatch entry and can still
+    be selected from a stored project. Whoever overwrites a span owes it the
+    dispatch stub as well; ab_image.py does that for SPRING and DARK and
+    verify_analog_bd_reverbs.py checks it.
+    """
+    sp = p_spans(payload)
+    out = {}
+    for host, entries in CROSS_ENTRIES.items():
+        if host not in harvest or host not in sp:
+            continue
+        a, n = sp[host]
+        for off, callers in entries:
+            if any(c not in harvest for c in callers):
+                lo = a + off
+                if host not in out or lo < out[host][0]:
+                    out[host] = (lo, a + n - lo)
+    return out
 
 
 def harvested(listed) -> frozenset[str]:
